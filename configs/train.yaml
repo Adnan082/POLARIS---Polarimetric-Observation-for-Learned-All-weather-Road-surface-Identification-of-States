@@ -1,0 +1,43 @@
+experiment:
+  name: fusion_convnext_base
+  model: fusion                   # rgb | polar | fusion
+  seed: 42
+
+data:
+  s3_bucket: polaris-prism
+  local_data_dir: /mnt/nvme/polaris
+  image_size: 512
+  num_workers: 8
+  pin_memory: true
+
+  surface_states:                 # classification targets
+    - dry
+    - damp
+    - wet
+    - slush
+    - snow
+
+  road_materials:
+    - asphalt
+    - concrete
+    - gravel
+
+training:
+  epochs: 50
+  batch_size: 16
+  grad_accumulation_steps: 4     # effective batch = 64
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  warmup_epochs: 5
+  mixed_precision: true
+
+  optimizer: adamw
+  scheduler: cosine
+
+  checkpoint_every_n_epochs: 1
+  s3_checkpoint_prefix: checkpoints/
+
+logging:
+  backend: wandb                  # wandb | tensorboard
+  project: polaris
+  offline: true                   # sync manually on spot shutdown

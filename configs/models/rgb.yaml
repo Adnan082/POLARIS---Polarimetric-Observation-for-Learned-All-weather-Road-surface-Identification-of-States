@@ -1,0 +1,6 @@
+name: rgb_only
+backbone: convnext_base
+pretrained: true
+in_channels: 3          # R G B
+num_classes: 5          # surface state
+drop_rate: 0.2

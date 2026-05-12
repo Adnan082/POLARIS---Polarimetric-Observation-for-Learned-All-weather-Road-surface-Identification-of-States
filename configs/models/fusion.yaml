@@ -1,0 +1,10 @@
+name: fusion
+backbone: convnext_base
+rgb_pretrained: true
+polar_pretrained: false
+rgb_channels: 3
+polar_channels: 5       # S0 S1 S2 DoLP AoLP
+feature_dim: 1024       # per-stream output dim from ConvNeXt-Base
+fusion_dim: 2048        # concatenated
+num_classes: 5
+drop_rate: 0.2

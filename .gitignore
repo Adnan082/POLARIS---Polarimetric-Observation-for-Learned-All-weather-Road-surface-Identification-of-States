@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.py[cod]
 .env
 *.npy
@@ -7,3 +7,11 @@
 data/
 wandb/
 .vscode/
+polaris/
+*.egg-info/
+dist/
+build/
+.ipynb_checkpoints/
+results/
+logs/
+*.log

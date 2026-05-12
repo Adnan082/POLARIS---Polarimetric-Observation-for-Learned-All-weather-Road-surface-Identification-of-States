@@ -1,0 +1,6 @@
+name: polar_only
+backbone: convnext_base
+pretrained: false       # no ImageNet pretraining for polar stream
+in_channels: 5          # S0 S1 S2 DoLP AoLP
+num_classes: 5
+drop_rate: 0.2
