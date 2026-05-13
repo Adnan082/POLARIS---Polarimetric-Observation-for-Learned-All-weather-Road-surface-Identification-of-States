@@ -72,8 +72,12 @@ local    = Path(os.environ["LOCAL_DIR"])
 log_file = os.environ["LOG_FILE"]
 
 api  = HfApi()
-tree = api.list_repo_tree(repo_id, repo_type="dataset", token=token, recursive=True)
-zips = [f.path for f in tree if hasattr(f, "path") and f.path.endswith(".zip")]
+zips = []
+for split in ["train", "val"]:
+    items = api.list_repo_tree(repo_id, repo_type="dataset", token=token,
+                               path_in_repo=split, recursive=False)
+    zips += [f.path for f in items if hasattr(f, "path") and f.path.endswith(".zip")]
+zips.sort()
 zips.sort()
 
 print(f"Found {len(zips)} session zips")
