@@ -38,12 +38,11 @@ fi
 pip install --quiet --break-system-packages huggingface_hub
 mkdir -p "${LOCAL_DIR}"
 
-# --- Step 1: labels.json first ---
+# --- Step 1: labels.json ---
 echo "Downloading labels.json ..." | tee -a "${LOG_FILE}"
 python3 - <<PYEOF
-import os
+import os, shutil
 from huggingface_hub import hf_hub_download
-import shutil
 
 path = hf_hub_download(
     repo_id=os.environ["HF_REPO"],
@@ -59,9 +58,8 @@ aws s3 cp "${LOCAL_DIR}/labels.json" "s3://${S3_BUCKET}/raw/labels.json" --regio
 echo "labels.json uploaded." | tee -a "${LOG_FILE}"
 
 # --- Step 2: one session at a time ---
-# Download zip → extract → upload to S3 → delete local → next session
 python3 - <<PYEOF
-import os, subprocess, zipfile, shutil
+import os, subprocess, zipfile, shutil, traceback
 from pathlib import Path
 from huggingface_hub import HfApi, hf_hub_download
 
@@ -71,6 +69,11 @@ bucket   = os.environ["S3_BUCKET"]
 local    = Path(os.environ["LOCAL_DIR"])
 log_file = os.environ["LOG_FILE"]
 
+def log(msg):
+    print(msg, flush=True)
+    with open(log_file, "a") as f:
+        f.write(msg + "\n")
+
 api  = HfApi()
 zips = []
 for split in ["train", "val"]:
@@ -79,26 +82,22 @@ for split in ["train", "val"]:
     zips += [f.path for f in items if hasattr(f, "path") and f.path.endswith(".zip")]
 zips.sort()
 
-print(f"Found {len(zips)} session zips")
+log(f"Found {len(zips)} session zips")
 
 for i, hf_path in enumerate(zips, 1):
     split        = hf_path.split("/")[0]
     session_name = Path(hf_path).stem
     session_dir  = local / split / session_name
 
-    msg = f"[{i}/{len(zips)}] {hf_path}"
-    print(msg, flush=True)
-    with open(log_file, "a") as lf: lf.write(msg + "\n")
+    log(f"[{i}/{len(zips)}] {hf_path}")
 
-    try:
-
-    # Skip if already uploaded to S3
-    check = subprocess.run([
-        "aws", "s3", "ls", f"s3://{bucket}/raw/{split}/{session_name}/",
-        "--region", "eu-west-2",
-    ], capture_output=True)
+    # Skip if already in S3
+    check = subprocess.run(
+        ["aws", "s3", "ls", f"s3://{bucket}/raw/{split}/{session_name}/", "--region", "eu-west-2"],
+        capture_output=True
+    )
     if check.returncode == 0 and check.stdout:
-        print(f"  already in S3 — skipping", flush=True)
+        log(f"  already in S3 — skipping")
         if session_dir.exists():
             shutil.rmtree(str(session_dir))
         continue
@@ -115,32 +114,25 @@ for i, hf_path in enumerate(zips, 1):
         with zipfile.ZipFile(zip_path) as zf:
             zf.extractall(local / split)
 
-        # Upload extracted session to S3
+        # Upload to S3
         s3_prefix = f"s3://{bucket}/raw/{split}/{session_name}"
         subprocess.run([
             "aws", "s3", "sync", str(session_dir), s3_prefix,
-            "--region", "eu-west-2",
-            "--no-progress",
-            "--storage-class", "STANDARD_IA",
+            "--region", "eu-west-2", "--no-progress", "--storage-class", "STANDARD_IA",
         ], check=True)
 
-        # Delete local to free disk
+        # Delete local copy
         shutil.rmtree(str(session_dir))
-        msg = f"  done — disk freed"
-        print(msg, flush=True)
-        with open(log_file, "a") as lf: lf.write(msg + "\n")
+        log(f"  done — disk freed")
 
     except Exception as e:
-        import traceback
         err = f"  ERROR on {hf_path}: {e}\n{traceback.format_exc()}"
-        print(err, flush=True)
-        with open(log_file, "a") as lf: lf.write(err + "\n")
-        # clean up partial files and continue to next session
+        log(err)
         if session_dir.exists():
             shutil.rmtree(str(session_dir))
         continue
 
-print("All sessions transferred.")
+log("All sessions transferred.")
 PYEOF
 
 echo "=== Transfer finished: $(date) ===" | tee -a "${LOG_FILE}"
