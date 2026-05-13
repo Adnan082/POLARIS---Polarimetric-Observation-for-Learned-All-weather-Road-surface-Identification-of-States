@@ -26,17 +26,17 @@ notebooks/      EDA notebook
 
 ### 1. Upload PRISM to S3 (one-time, run on c5n.2xlarge in eu-west-2)
 ```bash
-S3_BUCKET=polaris-prism HF_TOKEN=hf_xxx bash aws/transfer_setup.sh
+S3_BUCKET=polaris-prism-890615325560-eu-west-2-an HF_TOKEN=hf_xxx bash aws/transfer_setup.sh
 ```
 
 ### 2. Precompute Stokes cache (one-time)
 ```bash
-python scripts/precompute_stokes.py --bucket polaris-prism --local-dir /mnt/data
+python scripts/precompute_stokes.py --bucket polaris-prism-890615325560-eu-west-2-an --local-dir /mnt/data
 ```
 
 ### 3. Sync working subset to NVMe (run at start of each training job)
 ```bash
-python scripts/sync_data.py --bucket polaris-prism --local-dir /mnt/nvme/polaris
+python scripts/sync_data.py --bucket polaris-prism-890615325560-eu-west-2-an --local-dir /mnt/nvme/polaris
 ```
 
 ## EDA
@@ -60,7 +60,7 @@ python scripts/train.py --config configs/train.yaml --model fusion
 ## Evaluation
 
 ```bash
-python scripts/evaluate.py --checkpoint s3://polaris-prism/checkpoints/checkpoint_best.pt
+python scripts/evaluate.py --checkpoint s3://polaris-prism-890615325560-eu-west-2-an/checkpoints/checkpoint_best.pt
 ```
 
 ## License

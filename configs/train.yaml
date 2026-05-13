@@ -4,7 +4,7 @@ experiment:
   seed: 42
 
 data:
-  s3_bucket: polaris-prism
+  s3_bucket: polaris-prism-890615325560-eu-west-2-an
   local_data_dir: /mnt/nvme/polaris
   image_size: 512
   num_workers: 8

@@ -15,3 +15,4 @@ build/
 results/
 logs/
 *.log
+aws/user_data_transfer.sh
