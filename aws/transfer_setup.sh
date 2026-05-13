@@ -38,7 +38,7 @@ if ! command -v aws &> /dev/null; then
     rm -rf /tmp/awscliv2.zip /tmp/aws
 fi
 
-pip install --quiet huggingface_hub
+pip install --quiet --break-system-packages huggingface_hub
 
 mkdir -p "${LOCAL_DIR}"
 
