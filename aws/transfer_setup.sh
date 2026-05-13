@@ -28,7 +28,15 @@ echo "Started   : $(date)"
 
 # --- system setup ---
 sudo apt-get update -qq
-sudo apt-get install -y -qq python3-pip awscli
+sudo apt-get install -y -qq python3-pip unzip curl
+
+# Install AWS CLI v2 (not available via apt on Ubuntu 24.04)
+if ! command -v aws &> /dev/null; then
+    curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+    unzip -q /tmp/awscliv2.zip -d /tmp
+    sudo /tmp/aws/install
+    rm -rf /tmp/awscliv2.zip /tmp/aws
+fi
 
 pip install --quiet huggingface_hub
 
