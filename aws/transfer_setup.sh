@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# Run on a c5n.2xlarge in eu-west-2 to pull PRISM from HuggingFace → S3
-# Cost: ~$0.38/hr, expect 10-18 hrs for full 1.6TB
-# Never run this on your local machine — 1.6TB download
+# Run on EC2 in eu-west-2 to pull PRISM from HuggingFace → S3
+# Downloads, extracts, uploads, and deletes ONE session at a time
+# so disk usage never exceeds ~20 GB regardless of dataset size.
 #
 # Prerequisites:
 #   - IAM role with s3:PutObject on your bucket attached to this instance
-#   - HF_TOKEN env var set (export HF_TOKEN=hf_xxx)
+#   - HF_TOKEN env var set
 #   - S3 bucket already created in eu-west-2
 #
 # Usage:
-#   chmod +x transfer_setup.sh
-#   S3_BUCKET=polaris-prism HF_TOKEN=hf_xxx bash transfer_setup.sh
+#   S3_BUCKET=polaris-prism-xxx HF_TOKEN=hf_xxx bash aws/transfer_setup.sh
 
 set -euo pipefail
 
@@ -20,11 +19,9 @@ LOCAL_DIR="/home/ubuntu/prism_data"
 HF_REPO="NeurIPS-2026-PRISM/PRISM-Dataset"
 LOG_FILE="/home/ubuntu/transfer.log"
 
-echo "=== POLARIS: PRISM Dataset Transfer ==="
-echo "S3 bucket : s3://${S3_BUCKET}/raw/"
-echo "Local dir : ${LOCAL_DIR}"
-echo "Log       : ${LOG_FILE}"
-echo "Started   : $(date)"
+echo "=== POLARIS: PRISM Dataset Transfer ===" | tee -a "${LOG_FILE}"
+echo "S3 bucket : s3://${S3_BUCKET}/raw/"      | tee -a "${LOG_FILE}"
+echo "Started   : $(date)"                      | tee -a "${LOG_FILE}"
 
 # --- system setup ---
 sudo apt-get update -qq
@@ -39,61 +36,83 @@ if ! command -v aws &> /dev/null; then
 fi
 
 pip install --quiet --break-system-packages huggingface_hub
-
 mkdir -p "${LOCAL_DIR}"
 
-# --- HuggingFace download ---
-# snapshot_download handles resume — safe to re-run if interrupted
+# --- Step 1: labels.json first ---
+echo "Downloading labels.json ..." | tee -a "${LOG_FILE}"
 python3 - <<PYEOF
 import os
-from huggingface_hub import snapshot_download
+from huggingface_hub import hf_hub_download
+import shutil
 
-token = os.environ["HF_TOKEN"]
-local_dir = os.environ["LOCAL_DIR"]
-repo_id = os.environ["HF_REPO"]
-
-print(f"Downloading {repo_id} to {local_dir}")
-snapshot_download(
-    repo_id=repo_id,
+path = hf_hub_download(
+    repo_id=os.environ["HF_REPO"],
     repo_type="dataset",
-    local_dir=local_dir,
-    token=token,
-    resume_download=True,
-    ignore_patterns=["*.md"],
+    filename="labels.json",
+    token=os.environ["HF_TOKEN"],
 )
-print("Download complete.")
+shutil.copy(path, os.path.join(os.environ["LOCAL_DIR"], "labels.json"))
+print("labels.json downloaded.")
 PYEOF
 
-echo "HuggingFace download done: $(date)" | tee -a "${LOG_FILE}"
+aws s3 cp "${LOCAL_DIR}/labels.json" "s3://${S3_BUCKET}/raw/labels.json" --region eu-west-2
+echo "labels.json uploaded." | tee -a "${LOG_FILE}"
 
-# --- Extract session zips ---
-# HF stores each session as train/{session}.zip and val/{session}.zip
-# We unzip in-place so S3 gets extracted directory trees, not zip files
-echo "Extracting session zips ..."
-for split in train val; do
-    split_dir="${LOCAL_DIR}/${split}"
-    [ -d "${split_dir}" ] || continue
-    for zip_file in "${split_dir}"/*.zip; do
-        [ -f "${zip_file}" ] || continue
-        session_name=$(basename "${zip_file}" .zip)
-        target_dir="${split_dir}/${session_name}"
-        if [ ! -d "${target_dir}" ]; then
-            echo "  Extracting ${zip_file} ..."
-            unzip -q "${zip_file}" -d "${split_dir}"
-        fi
-        rm -f "${zip_file}"   # free disk space after extraction
-    done
-done
-echo "Extraction done: $(date)" | tee -a "${LOG_FILE}"
+# --- Step 2: one session at a time ---
+# Download zip → extract → upload to S3 → delete local → next session
+python3 - <<PYEOF
+import os, subprocess, zipfile, shutil
+from pathlib import Path
+from huggingface_hub import HfApi, hf_hub_download
 
-# --- S3 sync (same region = no egress cost) ---
-# --no-progress keeps logs clean; remove it if you want transfer speed shown
-echo "Syncing to s3://${S3_BUCKET}/raw/ ..."
-aws s3 sync "${LOCAL_DIR}" "s3://${S3_BUCKET}/raw/" \
-    --region eu-west-2 \
-    --no-progress \
-    --storage-class STANDARD_IA \
-    2>&1 | tee -a "${LOG_FILE}"
+token    = os.environ["HF_TOKEN"]
+repo_id  = os.environ["HF_REPO"]
+bucket   = os.environ["S3_BUCKET"]
+local    = Path(os.environ["LOCAL_DIR"])
+log_file = os.environ["LOG_FILE"]
 
-echo "S3 sync complete: $(date)" | tee -a "${LOG_FILE}"
-echo "=== Transfer finished. Safe to terminate this instance. ==="
+api  = HfApi()
+tree = api.list_repo_tree(repo_id, repo_type="dataset", token=token, recursive=False)
+zips = [f.path for f in tree if hasattr(f, "path") and f.path.endswith(".zip")]
+zips.sort()
+
+print(f"Found {len(zips)} session zips")
+
+for i, hf_path in enumerate(zips, 1):
+    split        = hf_path.split("/")[0]          # train or val
+    session_name = Path(hf_path).stem             # e.g. 0106_dataset
+    session_dir  = local / split / session_name
+
+    msg = f"[{i}/{len(zips)}] {hf_path}"
+    print(msg)
+    with open(log_file, "a") as lf: lf.write(msg + "\n")
+
+    # Download zip
+    zip_path = hf_hub_download(
+        repo_id=repo_id, repo_type="dataset",
+        filename=hf_path, token=token,
+    )
+
+    # Extract
+    (local / split).mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as zf:
+        zf.extractall(local / split)
+
+    # Upload extracted session to S3
+    s3_prefix = f"s3://{bucket}/raw/{split}/{session_name}"
+    subprocess.run([
+        "aws", "s3", "sync", str(session_dir), s3_prefix,
+        "--region", "eu-west-2",
+        "--no-progress",
+        "--storage-class", "STANDARD_IA",
+    ], check=True)
+
+    # Delete local to free disk
+    shutil.rmtree(str(session_dir))
+    print(f"  done — disk freed")
+
+print("All sessions transferred.")
+PYEOF
+
+echo "=== Transfer finished: $(date) ===" | tee -a "${LOG_FILE}"
+echo "Safe to terminate this instance."
