@@ -82,13 +82,15 @@ zips.sort()
 print(f"Found {len(zips)} session zips")
 
 for i, hf_path in enumerate(zips, 1):
-    split        = hf_path.split("/")[0]          # train or val
-    session_name = Path(hf_path).stem             # e.g. 0106_dataset
+    split        = hf_path.split("/")[0]
+    session_name = Path(hf_path).stem
     session_dir  = local / split / session_name
 
     msg = f"[{i}/{len(zips)}] {hf_path}"
-    print(msg)
+    print(msg, flush=True)
     with open(log_file, "a") as lf: lf.write(msg + "\n")
+
+    try:
 
     # Skip if already uploaded to S3
     check = subprocess.run([
@@ -96,34 +98,47 @@ for i, hf_path in enumerate(zips, 1):
         "--region", "eu-west-2",
     ], capture_output=True)
     if check.returncode == 0 and check.stdout:
-        print(f"  already in S3 — skipping")
+        print(f"  already in S3 — skipping", flush=True)
         if session_dir.exists():
             shutil.rmtree(str(session_dir))
         continue
 
-    # Download zip
-    zip_path = hf_hub_download(
-        repo_id=repo_id, repo_type="dataset",
-        filename=hf_path, token=token,
-    )
+    try:
+        # Download zip
+        zip_path = hf_hub_download(
+            repo_id=repo_id, repo_type="dataset",
+            filename=hf_path, token=token,
+        )
 
-    # Extract
-    (local / split).mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(local / split)
+        # Extract
+        (local / split).mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(local / split)
 
-    # Upload extracted session to S3
-    s3_prefix = f"s3://{bucket}/raw/{split}/{session_name}"
-    subprocess.run([
-        "aws", "s3", "sync", str(session_dir), s3_prefix,
-        "--region", "eu-west-2",
-        "--no-progress",
-        "--storage-class", "STANDARD_IA",
-    ], check=True)
+        # Upload extracted session to S3
+        s3_prefix = f"s3://{bucket}/raw/{split}/{session_name}"
+        subprocess.run([
+            "aws", "s3", "sync", str(session_dir), s3_prefix,
+            "--region", "eu-west-2",
+            "--no-progress",
+            "--storage-class", "STANDARD_IA",
+        ], check=True)
 
-    # Delete local to free disk
-    shutil.rmtree(str(session_dir))
-    print(f"  done — disk freed")
+        # Delete local to free disk
+        shutil.rmtree(str(session_dir))
+        msg = f"  done — disk freed"
+        print(msg, flush=True)
+        with open(log_file, "a") as lf: lf.write(msg + "\n")
+
+    except Exception as e:
+        import traceback
+        err = f"  ERROR on {hf_path}: {e}\n{traceback.format_exc()}"
+        print(err, flush=True)
+        with open(log_file, "a") as lf: lf.write(err + "\n")
+        # clean up partial files and continue to next session
+        if session_dir.exists():
+            shutil.rmtree(str(session_dir))
+        continue
 
 print("All sessions transferred.")
 PYEOF
