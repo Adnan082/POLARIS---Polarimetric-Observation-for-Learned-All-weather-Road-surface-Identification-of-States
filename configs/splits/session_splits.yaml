@@ -1,62 +1,17 @@
-# Session-level train/val/test split
-# Fill in actual session IDs after running EDA (notebooks/eda.ipynb)
-# Never split at frame level — frames within a session share road/weather context
+# PRISM train/val split is defined by the dataset authors (train/ and val/ dirs in the repo)
+# Some sessions appear in BOTH train and val (intra-session splits for rare classes)
+# Do NOT override this split — use it as-is via PRISMDataset(split="train"/"val")
+#
+# Session names decoded from the data card (anonymised, date-indexed):
+# Format: {date_index}_{seq_index}_dataset
+# Full mapping released at camera-ready stage via dataset_name_remapping.json
 
-# Aim for ~70/15/15 split across sessions
-# Ensure each split has coverage of all 5 surface states and both domains
+# Known sessions (from HuggingFace file listing):
+# 0106_dataset, 0112_dataset, 0119_1_dataset, 0119_2_dataset, 0120_dataset,
+# 0124_dataset, 0129_1_dataset, 0129_2_dataset, 0129_3_dataset, 0129_4_dataset,
+# 0202_dataset, 0210_1_dataset, 0210_2_dataset, 0318_dataset, 0327_dataset, ...
+# (41 sessions total)
 
-train:
-  # proving ground sessions (controlled conditions)
-  - session_pg_001
-  - session_pg_002
-  - session_pg_003
-  - session_pg_004
-  # open road sessions
-  - session_or_001
-  - session_or_002
-  - session_or_003
-  - session_or_004
-  - session_or_005
-  - session_or_006
-  - session_or_007
-  - session_or_008
-  - session_or_009
-  - session_or_010
-  - session_or_011
-  - session_or_012
-  - session_or_013
-  - session_or_014
-  - session_or_015
-  - session_or_016
-  - session_or_017
-  - session_or_018
-  - session_or_019
-  - session_or_020
-  - session_or_021
-  - session_or_022
-  - session_or_023
-  - session_or_024
-  - session_or_025
-  - session_or_026
-  - session_or_027
-  - session_or_028
-
-val:
-  - session_pg_005
-  - session_or_029
-  - session_or_030
-  - session_or_031
-  - session_or_032
-  - session_or_033
-
-test:
-  - session_pg_006
-  # domain transfer test — open road only
-  - session_or_034
-  - session_or_035
-  - session_or_036
-  - session_or_037
-  - session_or_038
-  - session_or_039
-  - session_or_040
-  - session_or_041
+# For domain-transfer experiment (proving_ground → open_road):
+# proving_ground sessions are identifiable by road_type="proving_ground" in labels.json
+# Extract them programmatically from labels rather than hardcoding here.

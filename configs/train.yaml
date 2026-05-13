@@ -10,17 +10,19 @@ data:
   num_workers: 8
   pin_memory: true
 
-  surface_states:                 # classification targets
+  surface_states:                 # 5 classes (primary target)
     - dry
     - damp
     - wet
     - slush
-    - snow
+    - snow_covered
 
-  road_materials:
+  surface_materials:              # 5 classes (secondary target)
     - asphalt
     - concrete
+    - belgian_block
     - gravel
+    - other
 
 training:
   epochs: 50

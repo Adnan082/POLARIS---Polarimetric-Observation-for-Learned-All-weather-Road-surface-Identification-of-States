@@ -42,29 +42,36 @@ def main():
     with open(args.splits_file) as f:
         splits = yaml.safe_load(f)
 
-    all_sessions = splits["train"] + splits["val"] + splits["test"]
+    split_sessions = {
+        "train": splits.get("train", []),
+        "val":   splits.get("val", []),
+    }
 
     if args.eda_only:
-        # pick the first 3 sessions — replace with specific sessions after EDA
-        sessions = all_sessions[:3]
-        print(f"EDA mode: syncing {len(sessions)} sessions only")
+        # pick the first 3 train sessions — replace with specific sessions after EDA
+        split_sessions = {"train": split_sessions["train"][:3], "val": []}
+        total = sum(len(v) for v in split_sessions.values())
+        print(f"EDA mode: syncing {total} sessions only")
     else:
-        sessions = all_sessions
-        print(f"Syncing {len(sessions)} sessions")
+        total = sum(len(v) for v in split_sessions.values())
+        print(f"Syncing {total} sessions")
 
     local_root = Path(args.local_dir)
     local_root.mkdir(parents=True, exist_ok=True)
 
-    for session in sessions:
-        session_local = str(local_root / session)
-        s3_sync(args.bucket, f"raw/{session}", session_local)
+    for split, sessions in split_sessions.items():
+        for session in sessions:
+            # S3 layout: raw/train/{session}/ and raw/val/{session}/
+            # Local layout mirrors: {local_root}/train/{session}/  (what PRISMDataset expects)
+            session_local = str(local_root / split / session)
+            s3_sync(args.bucket, f"raw/{split}/{session}", session_local)
 
-        if args.include_stokes:
-            stokes_local = str(local_root / "stokes" / session)
-            s3_sync(args.bucket, f"processed/stokes/{session}", stokes_local)
+            if args.include_stokes:
+                stokes_local = str(local_root / "stokes" / session)
+                s3_sync(args.bucket, f"processed/stokes/{session}", stokes_local)
 
-    # always sync splits config
-    s3_sync(args.bucket, "splits", str(local_root / "splits"))
+    # always sync labels.json
+    s3_sync(args.bucket, "raw/labels.json", str(local_root / "labels.json"))
 
     print("Done.")
 

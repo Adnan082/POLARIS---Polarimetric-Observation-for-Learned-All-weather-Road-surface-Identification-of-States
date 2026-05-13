@@ -51,12 +51,32 @@ snapshot_download(
     local_dir=local_dir,
     token=token,
     resume_download=True,
-    ignore_patterns=["*.md", "*.json"],   # skip metadata-only files
+    ignore_patterns=["*.md"],
 )
 print("Download complete.")
 PYEOF
 
 echo "HuggingFace download done: $(date)" | tee -a "${LOG_FILE}"
+
+# --- Extract session zips ---
+# HF stores each session as train/{session}.zip and val/{session}.zip
+# We unzip in-place so S3 gets extracted directory trees, not zip files
+echo "Extracting session zips ..."
+for split in train val; do
+    split_dir="${LOCAL_DIR}/${split}"
+    [ -d "${split_dir}" ] || continue
+    for zip_file in "${split_dir}"/*.zip; do
+        [ -f "${zip_file}" ] || continue
+        session_name=$(basename "${zip_file}" .zip)
+        target_dir="${split_dir}/${session_name}"
+        if [ ! -d "${target_dir}" ]; then
+            echo "  Extracting ${zip_file} ..."
+            unzip -q "${zip_file}" -d "${split_dir}"
+        fi
+        rm -f "${zip_file}"   # free disk space after extraction
+    done
+done
+echo "Extraction done: $(date)" | tee -a "${LOG_FILE}"
 
 # --- S3 sync (same region = no egress cost) ---
 # --no-progress keeps logs clean; remove it if you want transfer speed shown
