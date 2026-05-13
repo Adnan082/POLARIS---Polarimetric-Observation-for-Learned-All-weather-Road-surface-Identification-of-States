@@ -78,7 +78,6 @@ for split in ["train", "val"]:
                                path_in_repo=split, recursive=False)
     zips += [f.path for f in items if hasattr(f, "path") and f.path.endswith(".zip")]
 zips.sort()
-zips.sort()
 
 print(f"Found {len(zips)} session zips")
 
@@ -90,6 +89,17 @@ for i, hf_path in enumerate(zips, 1):
     msg = f"[{i}/{len(zips)}] {hf_path}"
     print(msg)
     with open(log_file, "a") as lf: lf.write(msg + "\n")
+
+    # Skip if already uploaded to S3
+    check = subprocess.run([
+        "aws", "s3", "ls", f"s3://{bucket}/raw/{split}/{session_name}/",
+        "--region", "eu-west-2",
+    ], capture_output=True)
+    if check.returncode == 0 and check.stdout:
+        print(f"  already in S3 — skipping")
+        if session_dir.exists():
+            shutil.rmtree(str(session_dir))
+        continue
 
     # Download zip
     zip_path = hf_hub_download(
