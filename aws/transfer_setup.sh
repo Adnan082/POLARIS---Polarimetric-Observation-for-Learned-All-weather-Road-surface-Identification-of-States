@@ -72,7 +72,7 @@ local    = Path(os.environ["LOCAL_DIR"])
 log_file = os.environ["LOG_FILE"]
 
 api  = HfApi()
-tree = api.list_repo_tree(repo_id, repo_type="dataset", token=token, recursive=False)
+tree = api.list_repo_tree(repo_id, repo_type="dataset", token=token, recursive=True)
 zips = [f.path for f in tree if hasattr(f, "path") and f.path.endswith(".zip")]
 zips.sort()
 
