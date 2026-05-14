@@ -114,6 +114,12 @@ for i, hf_path in enumerate(zips, 1):
         with zipfile.ZipFile(zip_path) as zf:
             zf.extractall(local / split)
 
+        # Delete HF cache to free disk (zips cached in ~/.cache/huggingface/)
+        hf_cache = Path.home() / ".cache" / "huggingface"
+        if hf_cache.exists():
+            shutil.rmtree(str(hf_cache))
+            log("  HF cache cleared")
+
         # Upload to S3
         s3_prefix = f"s3://{bucket}/raw/{split}/{session_name}"
         subprocess.run([
