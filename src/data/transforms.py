@@ -22,11 +22,11 @@ def get_rgb_transforms(image_size: int, train: bool):
 
 
 def get_polar_transforms(image_size: int, train: bool):
-    # Per-channel stats computed from 3 EDA sessions (dry/snow/damp)
+    # Per-channel stats computed from 4 EDA sessions (dry/snow/damp/wet)
     # S0/S1/S2 are in raw uint8 scale (0-510 for S0, signed for S1/S2)
     # DoLP is normalized [0,1], AoLP is in radians [-pi/2, pi/2]
-    polar_mean = [197.050388, -16.753594, 1.12391,  0.153915, 0.151688]
-    polar_std  = [150.529773,  19.353948, 16.14056, 0.098816, 1.033142]
+    polar_mean = [186.758690, -17.185258,  0.934233, 0.160030, 0.164714]
+    polar_std  = [139.619924,  17.679148, 14.583693, 0.096059, 1.095443]
 
     if train:
         return A.Compose([
