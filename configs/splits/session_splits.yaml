@@ -62,9 +62,10 @@ val:
   - 0327_4_dataset
   - 0327_9_dataset
 
-# EDA sessions — covers dry / snow / damp conditions (one session each)
+# EDA sessions — covers dry / snow / damp / wet conditions (one session each)
 # Use with: python scripts/sync_data.py --eda-only
 eda:
   - 0106_dataset       # dry,  clear
   - 0112_dataset       # snow_covered, snowy
   - 0119_1_dataset     # damp, overcast
+  - 0318_1_dataset     # wet candidate (March, spring conditions)
