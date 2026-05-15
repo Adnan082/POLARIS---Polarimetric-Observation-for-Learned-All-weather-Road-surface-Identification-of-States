@@ -4,7 +4,7 @@ __pycache__/
 *.npy
 *.pt
 *.pth
-data/
+/data/
 wandb/
 .vscode/
 polaris/
