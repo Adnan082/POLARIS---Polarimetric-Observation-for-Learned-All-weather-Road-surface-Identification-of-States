@@ -21,7 +21,7 @@ from src.data.stokes import compute_stokes, pack_polar_channels
 from src.data.utils import POLAR_DIRS, imread_unicode
 
 
-def process_session(session_dir: Path, out_root: Path, s3, bucket: str):
+def process_session(session_dir: Path, out_root: Path, s3, bucket: str, split: str = ""):
     for seq_dir in sorted(session_dir.iterdir()):
         if not seq_dir.is_dir() or seq_dir.name == "vehicle_state":
             continue
@@ -55,7 +55,7 @@ def process_session(session_dir: Path, out_root: Path, s3, bucket: str):
                 np.save(str(out_path), packed)
 
                 if s3 and bucket:
-                    s3_key = f"processed/stokes/{session_dir.name}/{seq_dir.name}/{stem}.npy"
+                    s3_key = f"processed/stokes/{split}/{session_dir.name}/{seq_dir.name}/{stem}.npy"
                     s3.upload_file(str(out_path), bucket, s3_key)
 
 
@@ -77,7 +77,7 @@ def main():
         sessions = sorted([d for d in split_dir.iterdir() if d.is_dir()])
         print(f"{split}: {len(sessions)} sessions")
         for session_dir in sessions:
-            process_session(session_dir, out_root, s3, args.bucket)
+            process_session(session_dir, out_root, s3, args.bucket, split=split)
 
     print("Stokes precomputation complete.")
 

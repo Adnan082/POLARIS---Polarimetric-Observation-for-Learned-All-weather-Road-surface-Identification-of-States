@@ -1,17 +1,70 @@
-# PRISM train/val split is defined by the dataset authors (train/ and val/ dirs in the repo)
-# Some sessions appear in BOTH train and val (intra-session splits for rare classes)
+# PRISM train/val split defined by dataset authors (train/ and val/ dirs in S3)
+# Some sessions appear in BOTH splits — those use different sequences for train vs val
 # Do NOT override this split — use it as-is via PRISMDataset(split="train"/"val")
 #
-# Session names decoded from the data card (anonymised, date-indexed):
-# Format: {date_index}_{seq_index}_dataset
-# Full mapping released at camera-ready stage via dataset_name_remapping.json
+# 34 train sessions, 20 val sessions (54 total unique sessions)
 
-# Known sessions (from HuggingFace file listing):
-# 0106_dataset, 0112_dataset, 0119_1_dataset, 0119_2_dataset, 0120_dataset,
-# 0124_dataset, 0129_1_dataset, 0129_2_dataset, 0129_3_dataset, 0129_4_dataset,
-# 0202_dataset, 0210_1_dataset, 0210_2_dataset, 0318_dataset, 0327_dataset, ...
-# (41 sessions total)
+train:
+  - 0106_dataset       # dry,  clear,    urban
+  - 0112_dataset       # snow_covered, snowy, urban
+  - 0119_1_dataset     # damp, overcast, highway
+  - 0119_2_dataset     # damp, overcast, highway
+  - 0120_dataset       # dry,  clear,    urban
+  - 0124_dataset
+  - 0128_2_dataset
+  - 0128_4_dataset
+  - 0128_6_dataset
+  - 0129_1_dataset
+  - 0129_3_dataset
+  - 0129_4_dataset
+  - 0202_dataset
+  - 0210_1_dataset
+  - 0210_2_dataset
+  - 0318_1_dataset
+  - 0318_2_dataset
+  - 0318_4_dataset
+  - 0318_5_dataset
+  - 0318_7_dataset
+  - 0318_8_dataset
+  - 0318_9_dataset
+  - 0318_10_dataset
+  - 0318_11_dataset
+  - 0318_12_dataset
+  - 0318_13_dataset
+  - 0327_1_dataset
+  - 0327_2_dataset
+  - 0327_5_dataset
+  - 0327_6_dataset
+  - 0327_7_dataset
+  - 0327_8_dataset
+  - 0327_10_dataset
+  - 0327_11_dataset
 
-# For domain-transfer experiment (proving_ground → open_road):
-# proving_ground sessions are identifiable by road_type="proving_ground" in labels.json
-# Extract them programmatically from labels rather than hardcoding here.
+val:
+  - 0106_dataset       # shared with train (different sequences)
+  - 0112_dataset       # shared with train
+  - 0119_2_dataset     # shared with train
+  - 0120_dataset       # shared with train
+  - 0124_dataset       # shared with train
+  - 0128_1_dataset
+  - 0128_3_dataset
+  - 0128_5_dataset
+  - 0128_7_dataset
+  - 0129_1_dataset     # shared with train
+  - 0129_2_dataset
+  - 0210_1_dataset     # shared with train
+  - 0318_3_dataset
+  - 0318_6_dataset
+  - 0318_9_dataset     # shared with train
+  - 0318_10_dataset    # shared with train
+  - 0318_13_dataset    # shared with train
+  - 0327_3_dataset
+  - 0327_4_dataset
+  - 0327_9_dataset
+
+# EDA sessions — covers dry / snow / damp conditions (one session each)
+# Use with: python scripts/sync_data.py --eda-only
+eda:
+  - 0106_dataset       # dry,  clear
+  - 0112_dataset       # snow_covered, snowy
+  - 0119_1_dataset     # damp, overcast

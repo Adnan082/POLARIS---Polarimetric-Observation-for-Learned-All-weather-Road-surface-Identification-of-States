@@ -48,10 +48,10 @@ def main():
     }
 
     if args.eda_only:
-        # pick the first 3 train sessions — replace with specific sessions after EDA
-        split_sessions = {"train": split_sessions["train"][:3], "val": []}
+        eda_sessions = splits.get("eda", splits.get("train", [])[:3])
+        split_sessions = {"train": eda_sessions, "val": []}
         total = sum(len(v) for v in split_sessions.values())
-        print(f"EDA mode: syncing {total} sessions only")
+        print(f"EDA mode: syncing {total} sessions — {eda_sessions}")
     else:
         total = sum(len(v) for v in split_sessions.values())
         print(f"Syncing {total} sessions")
@@ -67,8 +67,8 @@ def main():
             s3_sync(args.bucket, f"raw/{split}/{session}", session_local)
 
             if args.include_stokes:
-                stokes_local = str(local_root / "stokes" / session)
-                s3_sync(args.bucket, f"processed/stokes/{session}", stokes_local)
+                stokes_local = str(local_root / "stokes" / split / session)
+                s3_sync(args.bucket, f"processed/stokes/{split}/{session}", stokes_local)
 
     # always sync labels.json
     s3_sync(args.bucket, "raw/labels.json", str(local_root / "labels.json"))
