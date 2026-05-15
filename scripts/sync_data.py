@@ -70,8 +70,15 @@ def main():
                 stokes_local = str(local_root / "stokes" / split / session)
                 s3_sync(args.bucket, f"processed/stokes/{split}/{session}", stokes_local)
 
-    # always sync labels.json
-    s3_sync(args.bucket, "raw/labels.json", str(local_root / "labels.json"))
+    # labels.json is a single file — use cp not sync
+    cmd = [
+        "aws", "s3", "cp",
+        f"s3://{args.bucket}/raw/labels.json",
+        str(local_root / "labels.json"),
+        "--region", "eu-west-2",
+    ]
+    print(f"  copying labels.json")
+    subprocess.run(cmd, check=True)
 
     print("Done.")
 
