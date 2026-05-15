@@ -17,3 +17,4 @@ logs/
 *.log
 aws/user_data_transfer.sh
 aws/user_data_eda.sh
+.claude
