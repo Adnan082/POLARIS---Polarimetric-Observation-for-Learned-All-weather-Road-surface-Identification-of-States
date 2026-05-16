@@ -69,11 +69,11 @@ def collect_jobs(data_root: Path, out_root: Path) -> list:
             for seq_dir in sorted(session_dir.iterdir()):
                 if not seq_dir.is_dir() or seq_dir.name == "vehicle_state":
                     continue
-                rgb_dir = seq_dir / "rgb"
-                if not rgb_dir.exists():
+                polar_dir = seq_dir / "polar" / "0d"
+                if not polar_dir.exists():
                     continue
                 out_seq = out_root / split / session_dir.name / seq_dir.name
-                for frame_path in sorted(rgb_dir.glob("*.png")):
+                for frame_path in sorted(polar_dir.glob("*.png")):
                     stem = frame_path.stem
                     out_path = out_seq / f"{stem}.npy"
                     jobs.append((str(seq_dir), stem, str(out_path)))
