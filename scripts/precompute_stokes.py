@@ -37,7 +37,7 @@ def process_frame(args: tuple) -> str:
     """Process a single frame — must be a top-level function for multiprocessing."""
     seq_dir, stem, out_path = args
 
-    if out_path.exists():
+    if Path(out_path).exists():
         return "skip"
 
     arrays = {}
