@@ -37,8 +37,14 @@ def compute_stokes(
 
 
 def pack_polar_channels(stokes: dict) -> np.ndarray:
-    """Stack S0/S1/S2/DoLP/AoLP into a (5, H, W) float32 array for the model."""
+    """Stack S0/S1/S2/DoLP/sin(2·AoLP)/cos(2·AoLP) into (6, H, W) float32.
+
+    AoLP is circular in [-pi/2, pi/2] so raw values are not fed to the model.
+    sin/cos decomposition avoids the discontinuity and removes redundancy with S2.
+    """
+    sin_aolp = np.sin(2 * stokes["AoLP"]).astype(np.float32)
+    cos_aolp = np.cos(2 * stokes["AoLP"]).astype(np.float32)
     return np.stack(
-        [stokes["S0"], stokes["S1"], stokes["S2"], stokes["DoLP"], stokes["AoLP"]],
+        [stokes["S0"], stokes["S1"], stokes["S2"], stokes["DoLP"], sin_aolp, cos_aolp],
         axis=0,
     )
