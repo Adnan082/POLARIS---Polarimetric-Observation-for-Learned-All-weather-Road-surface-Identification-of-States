@@ -24,7 +24,7 @@ from pathlib import Path
 INSTANCE_TYPE = "c5.2xlarge"
 AMI_ID        = "ami-0951a43515d1f167b"
 REGION        = "eu-west-2"
-VOLUME_GB     = 60
+VOLUME_GB     = 200
 N_INSTANCES   = 4
 
 
