@@ -62,7 +62,7 @@ class Trainer:
         self.optimizer.zero_grad()
 
         for step, batch in enumerate(loader):
-            rgb, polar, labels = batch
+            rgb, polar, labels, _ = batch
             rgb = rgb.cuda(non_blocking=True)
             polar = polar.cuda(non_blocking=True)
             labels = labels.cuda(non_blocking=True)
@@ -83,14 +83,20 @@ class Trainer:
         return total_loss / len(loader)
 
     def _val_epoch(self, loader):
+        from sklearn.metrics import f1_score
         self.model.eval()
-        correct = total = 0
+        all_preds, all_labels = [], []
         with torch.no_grad():
             for batch in loader:
-                rgb, polar, labels = batch
+                rgb, polar, labels, _ = batch
                 rgb, polar, labels = rgb.cuda(), polar.cuda(), labels.cuda()
                 with autocast():
                     logits = self.model(rgb, polar)
-                correct += (logits.argmax(1) == labels).sum().item()
-                total += labels.size(0)
-        return {"acc": correct / total}
+                all_preds.extend(logits.argmax(1).cpu().tolist())
+                all_labels.extend(labels.cpu().tolist())
+        acc     = sum(p == l for p, l in zip(all_preds, all_labels)) / len(all_labels)
+        macro_f1 = f1_score(all_labels, all_preds, average="macro", zero_division=0)
+        is_best  = macro_f1 > getattr(self, "_best_f1", 0.0)
+        if is_best:
+            self._best_f1 = macro_f1
+        return {"acc": acc, "macro_f1": macro_f1, "is_best": is_best}

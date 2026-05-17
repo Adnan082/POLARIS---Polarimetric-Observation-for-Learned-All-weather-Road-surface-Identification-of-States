@@ -109,7 +109,7 @@ class PRISMDataset(Dataset):
                     stokes_cache_path = None
                     if self.stokes_cache_dir:
                         stokes_cache_path = str(
-                            self.stokes_cache_dir / session_id / seq_dir.name / f"{stem}.npy"
+                            self.stokes_cache_dir / split / session_id / seq_dir.name / f"{stem}.npy"
                         )
 
                     samples.append({
