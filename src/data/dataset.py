@@ -52,15 +52,17 @@ class PRISMDataset(Dataset):
         labels_json: str,
         split: Literal["train", "val"],
         mode: Literal["rgb", "polar", "fusion"],
-        rgb_transform=None,
-        polar_transform=None,
+        spatial_transform=None,
+        rgb_normalize=None,
+        polar_normalize=None,
         use_stokes_cache: bool = True,
         stokes_cache_dir: str | None = None,
     ):
         self.root             = Path(root)
         self.mode             = mode
-        self.rgb_transform    = rgb_transform
-        self.polar_transform  = polar_transform
+        self.spatial_transform = spatial_transform
+        self.rgb_normalize    = rgb_normalize
+        self.polar_normalize  = polar_normalize
         self.use_stokes_cache = use_stokes_cache
         self.stokes_cache_dir = Path(stokes_cache_dir) if stokes_cache_dir else None
 
@@ -133,24 +135,53 @@ class PRISMDataset(Dataset):
     def __getitem__(self, idx):
         s = self.samples[idx]
 
-        rgb_img    = self._load_rgb(s["rgb_path"])
-        polar_data = self._load_polar(s["polar_root"], s["stem"], s.get("stokes_cache_path"))
+        need_rgb   = self.mode in ("rgb",   "fusion")
+        need_polar = self.mode in ("polar", "fusion")
 
-        if self.rgb_transform is not None:
-            rgb_img = self.rgb_transform(image=rgb_img)["image"]
+        rgb_img    = self._load_rgb(s["rgb_path"])   if need_rgb   else None
+        polar_data = self._load_polar(
+            s["polar_root"], s["stem"], s.get("stokes_cache_path")
+        ) if need_polar else None
 
-        if self.polar_transform is not None:
-            polar_hwc = polar_data.transpose(1, 2, 0)
-            polar_hwc = self.polar_transform(image=polar_hwc)["image"]
-            polar_data = polar_hwc
+        # Apply same spatial transform to both streams (same crop, same flip)
+        if self.spatial_transform is not None:
+            inp = {}
+            if rgb_img   is not None: inp["image"] = rgb_img
+            if polar_data is not None: inp["polar"] = polar_data.transpose(1, 2, 0)
+            if not inp:
+                raise RuntimeError("No inputs for spatial transform")
+            if "image" not in inp:
+                inp["image"] = inp["polar"]   # albumentations needs "image" key
+                result = self.spatial_transform(**inp)
+                polar_hwc = result["image"]
+            elif "polar" not in inp:
+                result = self.spatial_transform(**inp)
+                rgb_img = result["image"]
+                polar_hwc = None
+            else:
+                result = self.spatial_transform(**inp)
+                rgb_img   = result["image"]
+                polar_hwc = result["polar"]
+        else:
+            polar_hwc = polar_data.transpose(1, 2, 0) if polar_data is not None else None
+
+        # Stream-specific normalisation + ToTensor
+        if rgb_img is not None and self.rgb_normalize is not None:
+            rgb_img = self.rgb_normalize(image=rgb_img)["image"]
+        if polar_hwc is not None and self.polar_normalize is not None:
+            polar_data = self.polar_normalize(image=polar_hwc)["image"]
+
+        # Dummy tensors for unused stream so DataLoader can collate
+        if rgb_img   is None: rgb_img   = torch.zeros(3, 1, 1)
+        if polar_data is None: polar_data = torch.zeros(6, 1, 1)
 
         label = torch.tensor(s["state"], dtype=torch.long)
 
         return rgb_img, polar_data, label, {
-            "session":  s["session"],
-            "weather":  s["weather"],
+            "session":   s["session"],
+            "weather":   s["weather"],
             "road_type": s["road_type"],
-            "material": s["material"],
+            "material":  s["material"],
         }
 
     def _load_rgb(self, path: str) -> np.ndarray:

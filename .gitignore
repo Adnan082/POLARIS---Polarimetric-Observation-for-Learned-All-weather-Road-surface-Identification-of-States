@@ -18,4 +18,5 @@ logs/
 aws/user_data_transfer.sh
 aws/user_data_eda.sh
 aws/user_data_precompute.sh
+aws/user_data_train.sh
 .claude
