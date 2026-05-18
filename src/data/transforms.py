@@ -21,8 +21,8 @@ class LowerCrop(A.DualTransform):
     regardless of camera tilt or scene content in the upper sky/horizon area.
     """
 
-    def __init__(self, keep: float = 0.65, always_apply: bool = True, p: float = 1.0):
-        super().__init__(always_apply=always_apply, p=p)
+    def __init__(self, keep: float = 0.65, p: float = 1.0):
+        super().__init__(p=p)
         self.keep = keep
 
     def apply(self, img, **_params):
