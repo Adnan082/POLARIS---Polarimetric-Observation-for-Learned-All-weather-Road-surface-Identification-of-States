@@ -53,6 +53,7 @@ def build_loaders(args, device):
         mode=args.mode,
         use_stokes_cache=True,
         stokes_cache_dir=args.stokes_dir,
+        s3_bucket=args.s3_bucket,              # enables S3 prefetch pipeline
     )
 
     train_ds = PRISMDataset(
