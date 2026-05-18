@@ -13,6 +13,7 @@ Testing flags:
 """
 
 import argparse
+import json
 import math
 import os
 import random
@@ -185,6 +186,167 @@ def run_overfit_test(model, loader, device, n_iters=100):
     sys.exit(0)
 
 
+# ── Plotting ──────────────────────────────────────────────────────────────────
+
+def save_plots(history: list, out_dir: Path, mode: str, class_names: list) -> tuple:
+    """Save training curves PNG + metrics JSON to out_dir."""
+    import matplotlib
+    matplotlib.use("Agg")          # non-interactive — no display on EC2
+    import matplotlib.pyplot as plt
+
+    metrics_path = out_dir / "metrics.json"
+    with open(metrics_path, "w") as f:
+        json.dump(history, f, indent=2)
+
+    epochs   = [h["epoch"]     for h in history]
+    best_idx = max(range(len(history)), key=lambda i: history[i]["macro_f1"])
+    best_ep  = history[best_idx]["epoch"]
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle(f"POLARIS — {mode} mode", fontsize=14, fontweight="bold")
+
+    # Loss
+    ax = axes[0, 0]
+    ax.plot(epochs, [h["train_loss"] for h in history], label="train", color="steelblue")
+    ax.plot(epochs, [h["val_loss"]   for h in history], label="val",   color="coral")
+    ax.axvline(best_ep, color="red", linestyle="--", alpha=0.4, label=f"best ep {best_ep}")
+    ax.set_xlabel("Epoch"); ax.set_ylabel("Loss"); ax.set_title("Loss")
+    ax.legend(); ax.grid(True, alpha=0.3)
+
+    # Macro F1
+    ax = axes[0, 1]
+    ax.plot(epochs, [h["macro_f1"] for h in history], color="mediumseagreen")
+    ax.axvline(best_ep, color="red", linestyle="--", alpha=0.4, label=f"best ep {best_ep}")
+    ax.set_xlabel("Epoch"); ax.set_ylabel("Macro F1"); ax.set_title("Macro F1 (val)")
+    ax.legend(); ax.grid(True, alpha=0.3)
+
+    # Per-class F1 at best epoch
+    ax = axes[1, 0]
+    pc = history[best_idx]["per_class"]
+    colors = ["steelblue" if v >= 0.7 else "coral" if v < 0.4 else "gold" for v in pc]
+    bars = ax.bar(class_names, pc, color=colors)
+    ax.set_ylim(0, 1.1); ax.set_ylabel("F1")
+    ax.set_title(f"Per-class F1 (epoch {best_ep})")
+    ax.tick_params(axis="x", rotation=20)
+    for bar, val in zip(bars, pc):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
+                f"{val:.3f}", ha="center", va="bottom", fontsize=9)
+
+    # Val accuracy
+    ax = axes[1, 1]
+    ax.plot(epochs, [h["val_acc"] for h in history], color="mediumpurple")
+    ax.axvline(best_ep, color="red", linestyle="--", alpha=0.4, label=f"best ep {best_ep}")
+    ax.set_xlabel("Epoch"); ax.set_ylabel("Accuracy"); ax.set_title("Val Accuracy")
+    ax.legend(); ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plot_path = out_dir / "training_curves.png"
+    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Plots saved to {plot_path}")
+    return metrics_path, plot_path
+
+
+def collect_predictions(model, loader, device) -> tuple:
+    """Single val forward pass — returns (preds, labels, softmax_probs)."""
+    model.eval()
+    all_preds, all_labels, all_probs = [], [], []
+    with torch.no_grad():
+        for rgb, polar, labels, _ in tqdm(loader, desc="evaluating", leave=False):
+            rgb, polar = rgb.to(device), polar.to(device)
+            with autocast(enabled=(device.type == "cuda")):
+                logits = model(rgb, polar)
+            probs = torch.softmax(logits, dim=1)
+            all_preds.extend(logits.argmax(1).cpu().tolist())
+            all_labels.extend(labels.tolist())
+            all_probs.append(probs.cpu().numpy())
+    return all_preds, all_labels, np.concatenate(all_probs, axis=0)
+
+
+def save_confusion_matrix(all_preds, all_labels, class_names: list, out_dir: Path) -> Path:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import confusion_matrix
+
+    cm      = confusion_matrix(all_labels, all_preds, labels=list(range(len(class_names))))
+    cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True).clip(min=1)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    fig.suptitle("Confusion Matrix", fontsize=13, fontweight="bold")
+
+    for ax, data, title in [(ax1, cm, "Counts"), (ax2, cm_norm, "Normalised")]:
+        im = ax.imshow(data, cmap="Blues", vmin=0, vmax=(1.0 if data is cm_norm else None))
+        plt.colorbar(im, ax=ax, fraction=0.046)
+        ax.set_xticks(range(len(class_names)))
+        ax.set_yticks(range(len(class_names)))
+        ax.set_xticklabels(class_names, rotation=45, ha="right")
+        ax.set_yticklabels(class_names)
+        ax.set_xlabel("Predicted"); ax.set_ylabel("True"); ax.set_title(title)
+        for i in range(len(class_names)):
+            for j in range(len(class_names)):
+                val   = data[i, j]
+                text  = f"{val:.2f}" if data is cm_norm else str(int(val))
+                color = "white" if (data is cm_norm and val > 0.5) else "black"
+                ax.text(j, i, text, ha="center", va="center", color=color, fontsize=9)
+
+    plt.tight_layout()
+    path = out_dir / "confusion_matrix.png"
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close()
+    return path
+
+
+def save_roc_curves(all_probs: np.ndarray, all_labels, class_names: list, out_dir: Path) -> tuple:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from sklearn.preprocessing import label_binarize
+    from sklearn.metrics import roc_curve, auc, roc_auc_score
+
+    n     = len(class_names)
+    y_bin = label_binarize(all_labels, classes=list(range(n)))
+    colors = plt.cm.tab10(np.linspace(0, 1, n))
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+
+    for i, (name, color) in enumerate(zip(class_names, colors)):
+        fpr, tpr, _ = roc_curve(y_bin[:, i], all_probs[:, i])
+        roc_auc = auc(fpr, tpr)
+        ax.plot(fpr, tpr, color=color, lw=2, label=f"{name}  (AUC = {roc_auc:.3f})")
+
+    macro_auc = roc_auc_score(y_bin, all_probs, average="macro", multi_class="ovr")
+    ax.plot([0, 1], [0, 1], "k--", lw=1, alpha=0.5, label="Random")
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.set_title(f"ROC Curves — one-vs-rest  (macro AUC = {macro_auc:.3f})")
+    ax.legend(loc="lower right", fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    path = out_dir / "roc_auc.png"
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close()
+    return path, macro_auc
+
+
+def save_classification_report(all_preds, all_labels, class_names: list, out_dir: Path) -> Path:
+    from sklearn.metrics import classification_report
+
+    report = classification_report(
+        all_labels, all_preds,
+        target_names=class_names,
+        digits=4,
+        zero_division=0,
+    )
+    print("\nClassification Report:\n")
+    print(report)
+
+    path = out_dir / "classification_report.txt"
+    path.write_text(report)
+    return path
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def parse_args():
@@ -274,6 +436,8 @@ def main():
     best_path = out_dir / f"best_{args.mode}.pth"
 
     # ── Training loop ─────────────────────────────────────────────────────────
+    history = []
+
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
         train_loss = train_epoch(
@@ -293,6 +457,15 @@ def main():
                 "args": vars(args),
             }, best_path)
 
+        history.append({
+            "epoch":      epoch,
+            "train_loss": train_loss,
+            "val_loss":   val_metrics["loss"],
+            "val_acc":    val_metrics["acc"],
+            "macro_f1":   val_metrics["macro_f1"],
+            "per_class":  val_metrics["per_class"],
+        })
+
         per_class_str = "  ".join(
             f"{SURFACE_STATES[i][:4]}={val_metrics['per_class'][i]:.3f}"
             for i in range(num_classes)
@@ -308,21 +481,41 @@ def main():
 
     print(f"\nBest macro F1: {best_f1:.4f}  saved to {best_path}")
 
-    # ── Per-class report ──────────────────────────────────────────────────────
-    print("\nFinal validation report:")
+    # ── Evaluation on best checkpoint ────────────────────────────────────────
+    print("\nLoading best checkpoint for final evaluation...")
     model.load_state_dict(torch.load(best_path)["model"])
-    metrics = val_epoch(model, val_loader, criterion, device, num_classes)
-    for i, name in enumerate(SURFACE_STATES):
-        print(f"  {name:15s}  F1={metrics['per_class'][i]:.4f}")
-    print(f"  {'macro':15s}  F1={metrics['macro_f1']:.4f}")
 
-    # ── S3 upload ─────────────────────────────────────────────────────────────
+    all_preds, all_labels, all_probs = collect_predictions(model, val_loader, device)
+
+    # Classification report (precision / recall / F1 / support per class)
+    report_path = save_classification_report(all_preds, all_labels, SURFACE_STATES, out_dir)
+
+    # Training curves (loss, macro F1, per-class F1, accuracy)
+    metrics_path, curves_path = save_plots(history, out_dir, args.mode, SURFACE_STATES)
+
+    # Confusion matrix (counts + normalised)
+    cm_path = save_confusion_matrix(all_preds, all_labels, SURFACE_STATES, out_dir)
+
+    # ROC-AUC curves (one-vs-rest, one curve per class + macro average)
+    roc_path, macro_auc = save_roc_curves(all_probs, all_labels, SURFACE_STATES, out_dir)
+    print(f"Macro AUC: {macro_auc:.4f}")
+
+    # ── S3 upload — checkpoint + all artefacts ────────────────────────────────
     if args.s3_bucket:
         import boto3
-        s3  = boto3.client("s3", region_name="eu-west-2")
-        key = f"{args.s3_prefix}/{best_path.name}"
-        s3.upload_file(str(best_path), args.s3_bucket, key)
-        print(f"Uploaded to s3://{args.s3_bucket}/{key}")
+        s3 = boto3.client("s3", region_name="eu-west-2")
+
+        uploads = [
+            (best_path,    f"{args.s3_prefix}/{best_path.name}"),
+            (curves_path,  f"{args.s3_prefix}/{args.mode}_training_curves.png"),
+            (cm_path,      f"{args.s3_prefix}/{args.mode}_confusion_matrix.png"),
+            (roc_path,     f"{args.s3_prefix}/{args.mode}_roc_auc.png"),
+            (report_path,  f"{args.s3_prefix}/{args.mode}_classification_report.txt"),
+            (metrics_path, f"{args.s3_prefix}/{args.mode}_metrics.json"),
+        ]
+        for local, key in uploads:
+            s3.upload_file(str(local), args.s3_bucket, key)
+            print(f"Uploaded s3://{args.s3_bucket}/{key}")
 
 
 if __name__ == "__main__":
