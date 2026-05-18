@@ -1,10 +1,22 @@
-name: fusion
-backbone: convnext_base
-rgb_pretrained: true
-polar_pretrained: false
-rgb_channels: 3
-polar_channels: 5       # S0 S1 S2 DoLP AoLP
-feature_dim: 1024       # per-stream output dim from ConvNeXt-Base
-fusion_dim: 2048        # concatenated
-num_classes: 5
-drop_rate: 0.2
+backbone: convnext_tiny
+feature_dim: 768             # ConvNeXt-Tiny output channels after final stage
+
+rgb_stream:
+  in_channels: 3
+  pretrained: true           # ImageNet pretrained weights via timm
+
+polar_stream:
+  in_channels: 6             # S0  S1  S2  DoLP  sin(2·AoLP)  cos(2·AoLP)
+  pretrained: false          # always random init — no matching pretrained weights exist
+
+attention:
+  type: spatial_gate         # Conv2d(C→1, k=1) → sigmoid → elementwise multiply
+                             # learns to suppress sky/vehicles, focus on road surface
+
+fusion_head:
+  in_dim: 1536               # 768 rgb + 768 polar concatenated
+  hidden_dim: 512
+  activation: gelu
+  drop_rate: 0.2
+
+num_classes: 5               # dry | damp | wet | slush | snow_covered

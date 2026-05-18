@@ -216,6 +216,8 @@ def parse_args():
 def main():
     args   = parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True   # fastest conv algo for fixed 512×512 input
     set_seed(args.seed)
 
     print(f"Mode: {args.mode} | Device: {device} | Image: {args.image_size}px")
@@ -239,6 +241,10 @@ def main():
     model = model.to(device)
     total_params = sum(p.numel() for p in model.parameters()) / 1e6
     print(f"Parameters: {total_params:.1f}M")
+
+    if device.type == "cuda":
+        model = torch.compile(model)           # fuse kernels, ~20-30% throughput gain
+        print("torch.compile enabled")
 
     # ── Overfit test ──────────────────────────────────────────────────────────
     if args.overfit_batch:

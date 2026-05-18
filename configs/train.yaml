@@ -1,23 +1,23 @@
 experiment:
-  name: fusion_convnext_base
-  model: fusion                   # rgb | polar | fusion
+  name: polaris_convnext_tiny
   seed: 42
 
 data:
   s3_bucket: polaris-prism-890615325560-eu-west-2-an
-  local_data_dir: /mnt/nvme/polaris
   image_size: 512
-  num_workers: 8
+  lower_crop_keep: 0.65        # bottom fraction of frame kept — road always present here
+  num_workers: 3               # 3 of 4 vCPUs on g4dn.xlarge, leave 1 for OS
   pin_memory: true
+  prefetch_factor: 2
 
-  surface_states:                 # 5 classes (primary target)
+  surface_states:
     - dry
     - damp
     - wet
     - slush
     - snow_covered
 
-  surface_materials:              # 5 classes (secondary target)
+  surface_materials:
     - asphalt
     - concrete
     - belgian_block
@@ -25,21 +25,32 @@ data:
     - other
 
 training:
-  epochs: 50
-  batch_size: 16
-  grad_accumulation_steps: 4     # effective batch = 64
+  epochs: 30
+  grad_accumulation_steps: 4   # effective batch = batch_size × 4
   learning_rate: 1.0e-4
+  head_lr_multiplier: 10       # head LR = 1e-3, backbone LR = 1e-4
   weight_decay: 0.01
-  warmup_epochs: 5
   mixed_precision: true
-
   optimizer: adamw
-  scheduler: cosine
+  scheduler: cosine            # CosineAnnealingLR, eta_min = lr × 0.01
+  compile: true                # torch.compile — fuses kernels, ~20-30% faster
+  cudnn_benchmark: true        # finds fastest conv algorithm for fixed 512×512 input
 
-  checkpoint_every_n_epochs: 1
-  s3_checkpoint_prefix: checkpoints/
+  # Fusion runs two full encoders in parallel — needs more VRAM, smaller batch
+  batch_size:
+    rgb: 32
+    polar: 32
+    fusion: 16
+
+  checkpoint_metric: macro_f1  # macro F1 over accuracy — fairer on imbalanced classes
+  loss: cross_entropy_weighted  # inverse-frequency class weights
+
+storage:
+  # RGB data (~100 GB) fits on g4dn.xlarge local NVMe (125 GB) — 24× faster reads vs EBS
+  # Polar stokes (~200 GB) and fusion (~300 GB) exceed NVMe capacity — stay on EBS
+  rgb_use_nvme: true
+  nvme_device: /dev/nvme1n1
+  nvme_mount: /mnt/nvme
 
 logging:
-  backend: wandb                  # wandb | tensorboard
-  project: polaris
-  offline: true                   # sync manually on spot shutdown
+  enabled: false               # wandb not integrated — add boto3 S3 log upload if needed
