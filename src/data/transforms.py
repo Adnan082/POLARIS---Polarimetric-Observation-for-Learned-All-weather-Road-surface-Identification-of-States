@@ -13,22 +13,49 @@ POLAR_MEAN = [186.758690, -17.185258,  0.934233, 0.160030,  0.164714,  0.0]
 POLAR_STD  = [139.619924,  17.679148, 14.583693, 0.096059,  1.095443,  0.7]
 
 
+class LowerCrop(A.DualTransform):
+    """Crops the bottom `keep` fraction of the image height.
+
+    In dashcam footage the road surface always occupies the lower portion of
+    the frame. Taking a fixed lower crop guarantees road pixels are present
+    regardless of camera tilt or scene content in the upper sky/horizon area.
+    """
+
+    def __init__(self, keep: float = 0.65, always_apply: bool = True, p: float = 1.0):
+        super().__init__(always_apply=always_apply, p=p)
+        self.keep = keep
+
+    def apply(self, img, **_params):
+        h = img.shape[0]
+        return img[int(h * (1 - self.keep)):, :]
+
+    def get_transform_init_args_names(self):
+        return ("keep",)
+
+
 def get_spatial_transforms(image_size: int, train: bool) -> A.Compose:
     """
-    Spatial augmentations applied JOINTLY to RGB and polar so both
-    receive the exact same crop, flip, and resize.
+    Spatial transforms applied JOINTLY to RGB and polar so both receive
+    the exact same crop, flip, and resize.
+
+    Step 1 — LowerCrop: keeps the bottom 65% of each frame where the road
+             surface is always visible, discarding sky/horizon.
+    Step 2 — Resize: scales the crop to the target square resolution.
+    Step 3 — HorizontalFlip (train only): left/right symmetry augmentation.
 
     Usage:
-        result     = transform(image=rgb_hwc, polar=polar_hwc)
-        rgb_out    = result["image"]
-        polar_out  = result["polar"]
+        result    = transform(image=rgb_hwc, polar=polar_hwc)
+        rgb_out   = result["image"]
+        polar_out = result["polar"]
     """
     if train:
         return A.Compose([
-            A.RandomResizedCrop(size=(image_size, image_size), scale=(0.7, 1.0)),
+            LowerCrop(keep=0.65),
+            A.Resize(height=image_size, width=image_size),
             A.HorizontalFlip(p=0.5),
         ], additional_targets={"polar": "image"})
     return A.Compose([
+        LowerCrop(keep=0.65),
         A.Resize(height=image_size, width=image_size),
     ], additional_targets={"polar": "image"})
 
